@@ -422,6 +422,7 @@ def parse_args() -> argparse.Namespace:
             "jina",
             "gemini",
             "voyageai",
+            "openvino",
         ],
         help="Embedding binding type (default: from env or ollama)",
     )

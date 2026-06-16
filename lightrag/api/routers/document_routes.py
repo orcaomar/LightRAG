@@ -1036,7 +1036,9 @@ class DocumentManager:
         for s in sorted(available_engine_suffixes()):
             ext = f".{s}"
             logger.debug(f"Scanning for {ext} files in {self.input_dir}")
-            for file_path in self.input_dir.glob(f"*{ext}"):
+            for file_path in self.input_dir.rglob(f"*{ext}"):
+                if any(part.startswith("__") or part == PARSED_DIR_NAME for part in file_path.relative_to(self.input_dir).parts):
+                    continue
                 if file_path in self.indexed_files:
                     continue
                 try:
@@ -1424,7 +1426,9 @@ def find_existing_file_by_file_path(input_dir: Path, file_path: str) -> Path | N
     if not file_path or file_path == UNKNOWN_FILE_SOURCE:
         return None
     try:
-        for candidate in input_dir.iterdir():
+        for candidate in input_dir.rglob("*"):
+            if any(part.startswith("__") or part == PARSED_DIR_NAME for part in candidate.relative_to(input_dir).parts):
+                continue
             if not candidate.is_file():
                 continue
             if normalize_file_path(candidate.name) == file_path:
@@ -1491,7 +1495,7 @@ def delete_file_variants_by_file_path(
 
     for candidate_dir in candidate_dirs:
         try:
-            candidates = list(candidate_dir.iterdir())
+            candidates = list(candidate_dir.rglob("*"))
         except FileNotFoundError:
             continue
         except Exception as e:
@@ -1500,6 +1504,13 @@ def delete_file_variants_by_file_path(
 
         in_parsed_dir = candidate_dir.name == PARSED_DIR_NAME
         for candidate in candidates:
+            # Skip hidden/system directories/files
+            relative_parts = candidate.relative_to(candidate_dir).parts
+            if any(part.startswith("__") for part in relative_parts):
+                continue
+            if not in_parsed_dir and any(part == PARSED_DIR_NAME for part in relative_parts):
+                continue
+
             if candidate.is_file():
                 if (
                     canonicalize_archived_file_variant_basename(

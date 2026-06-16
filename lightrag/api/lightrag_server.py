@@ -627,6 +627,27 @@ _PROVIDER_LOG_LABELS = {
     "openai": "OpenAI",
 }
 
+import threading
+
+_openvino_model = None
+_openvino_lock = threading.Lock()
+_openvino_async_lock = None
+
+def get_openvino_model(model_name_or_path: str):
+    """Get the cached OVSentenceTransformer instance in a thread-safe manner."""
+    global _openvino_model
+    if _openvino_model is None:
+        with _openvino_lock:
+            if _openvino_model is None:
+                from optimum.intel import OVSentenceTransformer
+                import openvino as ov
+                core = ov.Core()
+                devices = core.available_devices
+                device = "GPU" if "GPU" in devices else "CPU"
+                logger.info(f"Loading OpenVINO model from {model_name_or_path} on device {device}")
+                _openvino_model = OVSentenceTransformer.from_pretrained(model_name_or_path, device=device)
+    return _openvino_model
+
 
 def create_optimized_embedding_function(
     config_cache: LLMConfigCache,
@@ -671,6 +692,10 @@ def create_optimized_embedding_function(
             from lightrag.llm.openai import openai_embed
 
             provider_func = openai_embed
+        elif binding == "openvino":
+            provider_max_token_size = 512
+            provider_embedding_dim = 384
+            provider_supports_asymmetric = False
         elif binding == "ollama":
             from lightrag.llm.ollama import ollama_embed
 
@@ -739,7 +764,23 @@ def create_optimized_embedding_function(
         texts, embedding_dim=None, context="document"
     ):
         try:
-            if binding == "lollms":
+            if binding == "openvino":
+                import asyncio
+                model_path = model or "/workspace/tdsb_community_hub/openvino_model"
+                embed_model = get_openvino_model(model_path)
+                
+                global _openvino_async_lock
+                if _openvino_async_lock is None:
+                    _openvino_async_lock = asyncio.Lock()
+                
+                async with _openvino_async_lock:
+                    loop = asyncio.get_running_loop()
+                    embeddings = await loop.run_in_executor(
+                        None,
+                        lambda: embed_model.encode(texts, convert_to_numpy=True)
+                    )
+                return embeddings
+            elif binding == "lollms":
                 from lightrag.llm.lollms import lollms_embed
 
                 # Get real function, skip EmbeddingFunc wrapper if present
@@ -1237,6 +1278,7 @@ def create_app(args):
         "jina",
         "gemini",
         "voyageai",
+        "openvino",
     ]:
         raise Exception(f"embedding binding '{args.embedding_binding}' not supported")
 

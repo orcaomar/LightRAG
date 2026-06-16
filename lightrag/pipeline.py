@@ -3211,7 +3211,9 @@ class _PipelineMixin:
                 seen_roots.add(root)
                 if not root.exists() or not root.is_dir():
                     continue
-                for candidate in sorted(root.iterdir(), key=lambda item: item.name):
+                for candidate in sorted(root.rglob("*"), key=lambda item: item.name):
+                    if any(part.startswith("__") or part == PARSED_DIR_NAME for part in candidate.relative_to(root).parts):
+                        continue
                     if (
                         candidate.is_file()
                         and normalize_document_file_path(candidate.name)
