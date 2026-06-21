@@ -161,7 +161,7 @@ const refineEdgeProperties = (edge: RawEdgeType): EdgeType => {
 }
 
 const FilePropertyRow = ({ value }: { value: string }) => {
-  const [urls, setUrls] = useState<Record<string, string>>({})
+  const [metadata, setMetadata] = useState<Record<string, { url: string | null; title: string | null }>>({})
   const [loading, setLoading] = useState(false)
 
   const files = useMemo(() => {
@@ -174,17 +174,15 @@ const FilePropertyRow = ({ value }: { value: string }) => {
     Promise.all(
       files.map(file => 
         lookupDocumentMetadata(file)
-          .then(meta => ({ file, url: meta?.url || null }))
-          .catch(() => ({ file, url: null }))
+          .then(meta => ({ file, url: meta?.url || null, title: meta?.title || null }))
+          .catch(() => ({ file, url: null, title: null }))
       )
     ).then(results => {
-      const urlMap: Record<string, string> = {}
+      const metaMap: Record<string, { url: string | null; title: string | null }> = {}
       for (const res of results) {
-        if (res.url) {
-          urlMap[res.file] = res.url
-        }
+        metaMap[res.file] = { url: res.url, title: res.title }
       }
-      setUrls(urlMap)
+      setMetadata(metaMap)
     }).finally(() => setLoading(false))
   }, [files])
 
@@ -199,7 +197,9 @@ const FilePropertyRow = ({ value }: { value: string }) => {
   return (
     <div className="flex flex-col gap-1 mt-1">
       {files.map((file) => {
-        const url = urls[file]
+        const meta = metadata[file]
+        const displayLabel = meta?.title || file
+        const url = meta?.url
         if (url) {
           return (
             <a
@@ -209,18 +209,18 @@ const FilePropertyRow = ({ value }: { value: string }) => {
               rel="noopener noreferrer"
               className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline font-medium break-all"
             >
-              {file}
+              {displayLabel}
             </a>
           )
         }
-        return <span key={file}>{file}</span>
+        return <span key={file}>{displayLabel}</span>
       })}
     </div>
   )
 }
 
 const SourceIdPropertyRow = ({ value }: { value: string }) => {
-  const [chunksInfo, setChunksInfo] = useState<Record<string, { original_url?: string; page_num?: number; content?: string }>>({})
+  const [chunksInfo, setChunksInfo] = useState<Record<string, { original_url?: string; page_num?: number; content?: string; doc_title?: string }>>({})
   const [loading, setLoading] = useState(false)
 
   const chunkIds = useMemo(() => {
@@ -253,8 +253,9 @@ const SourceIdPropertyRow = ({ value }: { value: string }) => {
       <div className="flex flex-col gap-1 mt-1">
         {chunkIds.map((id) => {
           const info = chunksInfo[id]
-          const displayLabel = id.length > 30 ? `${id.substring(0, 15)}...${id.substring(id.length - 15)}` : id
+          const docTitle = info?.doc_title || (id.length > 30 ? `${id.substring(0, 15)}...${id.substring(id.length - 15)}` : id)
           const pageSuffix = info?.page_num ? ` (Page ${info.page_num})` : ''
+          const displayLabel = `${docTitle}${pageSuffix}`
 
           const innerElement = info && info.original_url ? (
             <a
@@ -263,7 +264,7 @@ const SourceIdPropertyRow = ({ value }: { value: string }) => {
               rel="noopener noreferrer"
               className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline font-medium text-xs break-all"
             >
-              {displayLabel}{pageSuffix}
+              {displayLabel}
             </a>
           ) : (
             <span className="text-primary/50 text-xs break-all">
