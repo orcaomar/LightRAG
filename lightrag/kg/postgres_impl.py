@@ -2937,6 +2937,11 @@ class PGKVStorage(BaseKVStorage):
                 # Tuple order must match SQL: (workspace, id, tokens, chunk_order_index,
                 #   full_doc_id, content, file_path, llm_cache_list, heading, sidecar,
                 #   create_time, update_time)
+                sidecar_data = v.get("sidecar") or {}
+                if isinstance(sidecar_data, dict):
+                    sidecar_data = dict(sidecar_data)
+                    if "page_num" not in sidecar_data and v.get("page_num") is not None:
+                        sidecar_data["page_num"] = v.get("page_num")
                 batch_values.append(
                     (
                         self.workspace,
@@ -2948,7 +2953,7 @@ class PGKVStorage(BaseKVStorage):
                         v["file_path"],
                         json.dumps(v.get("llm_cache_list", [])),
                         json.dumps(v.get("heading") or {}),
-                        json.dumps(v.get("sidecar") or {}),
+                        json.dumps(sidecar_data),
                         current_time,
                         current_time,
                     )

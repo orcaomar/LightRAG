@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from 'react'
 import { useGraphStore, RawNodeType, RawEdgeType } from '@/stores/graph'
 import { useBackendState } from '@/stores/state'
 import Text from '@/components/ui/Text'
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/Tooltip'
 import Button from '@/components/ui/Button'
 import useLightragGraph from '@/hooks/useLightragGraph'
 import { useTranslation } from 'react-i18next'
@@ -219,13 +220,17 @@ const FilePropertyRow = ({ value }: { value: string }) => {
 }
 
 const SourceIdPropertyRow = ({ value }: { value: string }) => {
-  const [chunksInfo, setChunksInfo] = useState<Record<string, { original_url?: string; page_num?: number }>>({})
+  const [chunksInfo, setChunksInfo] = useState<Record<string, { original_url?: string; page_num?: number; content?: string }>>({})
   const [loading, setLoading] = useState(false)
 
+  const chunkIds = useMemo(() => {
+    return typeof value === 'string' ? value.split('<SEP>').map(id => id.trim()).filter(Boolean) : []
+  }, [value])
+
   useEffect(() => {
-    if (!value) return
+    if (chunkIds.length === 0) return
     setLoading(true)
-    lookupChunks(value)
+    lookupChunks(chunkIds.join(','))
       .then((info) => {
         if (info) {
           setChunksInfo(info)
@@ -233,11 +238,7 @@ const SourceIdPropertyRow = ({ value }: { value: string }) => {
       })
       .catch((err) => console.error('Error fetching chunks:', err))
       .finally(() => setLoading(false))
-  }, [value])
-
-  const chunkIds = useMemo(() => {
-    return typeof value === 'string' ? value.split('<SEP>').map(id => id.trim()).filter(Boolean) : []
-  }, [value])
+  }, [chunkIds])
 
   if (loading) {
     return <span className="text-primary/40 animate-pulse">Loading chunks...</span>
@@ -248,34 +249,48 @@ const SourceIdPropertyRow = ({ value }: { value: string }) => {
   }
 
   return (
-    <div className="flex flex-col gap-1 mt-1">
-      {chunkIds.map((id) => {
-        const info = chunksInfo[id]
-        if (info && info.original_url) {
-          const urlWithPage = info.page_num
-            ? `${info.original_url}#page=${info.page_num}`
-            : info.original_url
-          return (
+    <TooltipProvider delayDuration={200}>
+      <div className="flex flex-col gap-1 mt-1">
+        {chunkIds.map((id) => {
+          const info = chunksInfo[id]
+          const displayLabel = id.length > 30 ? `${id.substring(0, 15)}...${id.substring(id.length - 15)}` : id
+          const pageSuffix = info?.page_num ? ` (Page ${info.page_num})` : ''
+
+          const innerElement = info && info.original_url ? (
             <a
-              key={id}
-              href={urlWithPage}
+              href={info.page_num ? `${info.original_url}#page=${info.page_num}` : info.original_url}
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline font-medium text-xs break-all"
-              title={id}
             >
-              {id.length > 30 ? `${id.substring(0, 15)}...${id.substring(id.length - 15)}` : id}
-              {info.page_num ? ` (Page ${info.page_num})` : ''}
+              {displayLabel}{pageSuffix}
             </a>
+          ) : (
+            <span className="text-primary/50 text-xs break-all">
+              {displayLabel}
+            </span>
           )
-        }
-        return (
-          <span key={id} className="text-primary/50 text-xs break-all" title={id}>
-            {id.length > 30 ? `${id.substring(0, 15)}...${id.substring(id.length - 15)}` : id}
-          </span>
-        )
-      })}
-    </div>
+
+          return (
+            <Tooltip key={id}>
+              <TooltipTrigger asChild>
+                <div className="cursor-help inline-block max-w-full hover:bg-primary/10 rounded px-1 transition-colors">
+                  {innerElement}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="max-w-96 text-xs p-3">
+                <div className="font-semibold text-primary mb-1 break-all">{id}</div>
+                {info?.content ? (
+                  <p className="text-muted-foreground whitespace-pre-wrap max-h-60 overflow-y-auto leading-relaxed">{info.content}</p>
+                ) : (
+                  <span className="text-muted-foreground italic">No text content available or loading...</span>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          )
+        })}
+      </div>
+    </TooltipProvider>
   )
 }
 

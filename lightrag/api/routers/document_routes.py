@@ -4020,7 +4020,9 @@ def create_document_routes(
         """
         Lookup chunk metadata (like original_url, page_num) by comma-separated chunk IDs.
         """
-        chunk_ids = [cid.strip() for cid in ids.split(",") if cid.strip()]
+        # Support both comma-separated and <SEP>-separated list of IDs
+        raw_ids = ids.replace("<SEP>", ",")
+        chunk_ids = [cid.strip() for cid in raw_ids.split(",") if cid.strip()]
         if not chunk_ids:
             return {}
         try:
@@ -4035,9 +4037,45 @@ def create_document_routes(
                     file_path = chunk_data.get("file_path") or ""
                     original_url = chunk_data.get("original_url")
                     page_num = chunk_data.get("page_num")
+                    if page_num is None and chunk_data.get("sidecar"):
+                        page_num = chunk_data.get("sidecar", {}).get("page_num")
                     doc_title = chunk_data.get("doc_title")
                     category = chunk_data.get("category")
                     
+                    doc_full_data = None
+                    if (not file_path or page_num is None) and chunk_data.get("full_doc_id"):
+                        doc_full_data = await rag.full_docs.get_by_id(chunk_data.get("full_doc_id"))
+
+                    if not file_path and doc_full_data:
+                        if isinstance(doc_full_data, dict):
+                            file_path = doc_full_data.get("file_path") or ""
+                        else:
+                            file_path = getattr(doc_full_data, "file_path", "") or ""
+
+                    if page_num is None and doc_full_data:
+                        sidecar_location = None
+                        if isinstance(doc_full_data, dict):
+                            sidecar_location = doc_full_data.get("sidecar_location")
+                        else:
+                            sidecar_location = getattr(doc_full_data, "sidecar_location", None)
+                        
+                        if sidecar_location:
+                            from lightrag.utils_pipeline import sidecar_blocks_path, load_block_page_mapping
+                            blocks_path = sidecar_blocks_path(sidecar_location)
+                            if blocks_path:
+                                block_page_map = load_block_page_mapping(blocks_path)
+                                sidecar_obj = chunk_data.get("sidecar") or {}
+                                refs = sidecar_obj.get("refs", [])
+                                for ref in refs:
+                                    ref_id = ref.get("id")
+                                    if ref_id in block_page_map:
+                                        page_num = block_page_map[ref_id]
+                                        break
+                                if page_num is None:
+                                    sidecar_id = sidecar_obj.get("id")
+                                    if sidecar_id in block_page_map:
+                                        page_num = block_page_map[sidecar_id]
+
                     if not original_url and file_path:
                         # Normalize path
                         norm_path = file_path.replace("\\", "/")
@@ -4055,8 +4093,10 @@ def create_document_routes(
                                     break
                         if meta:
                             original_url = meta.get("url")
-                            doc_title = meta.get("title")
-                            category = meta.get("category")
+                            if not doc_title:
+                                doc_title = meta.get("title")
+                            if not category:
+                                category = meta.get("category")
                             
                     result[chunk_id] = {
                         "original_url": original_url,
@@ -4064,6 +4104,7 @@ def create_document_routes(
                         "file_path": file_path,
                         "doc_title": doc_title,
                         "category": category,
+                        "content": chunk_data.get("content") or chunk_data.get("text") or "",
                     }
             return result
         except Exception as e:
