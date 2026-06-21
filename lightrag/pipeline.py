@@ -2467,7 +2467,7 @@ class _PipelineMixin:
                     backfill_chunk_sidecars(chunking_result, blocks_path)
 
                 chunks = build_chunks_dict_from_chunking_result(
-                    chunking_result, doc_id=doc_id, file_path=file_path
+                    chunking_result, doc_id=doc_id, file_path=file_path, blocks_path=blocks_path
                 )
 
                 if not chunks:

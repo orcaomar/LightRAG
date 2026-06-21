@@ -25,6 +25,7 @@ from fastapi import (
     File,
     HTTPException,
     UploadFile,
+    Query,
 )
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -1037,7 +1038,14 @@ class DocumentManager:
             ext = f".{s}"
             logger.debug(f"Scanning for {ext} files in {self.input_dir}")
             for file_path in self.input_dir.rglob(f"*{ext}"):
-                if any(part.startswith("__") or part == PARSED_DIR_NAME for part in file_path.relative_to(self.input_dir).parts):
+                if any(
+                    part.startswith("__")
+                    or part == PARSED_DIR_NAME
+                    or part.endswith(".docling_raw")
+                    or part.endswith(".parsed")
+                    or part.endswith(".mineru_raw")
+                    for part in file_path.relative_to(self.input_dir).parts
+                ):
                     continue
                 if file_path in self.indexed_files:
                     continue
@@ -1427,7 +1435,14 @@ def find_existing_file_by_file_path(input_dir: Path, file_path: str) -> Path | N
         return None
     try:
         for candidate in input_dir.rglob("*"):
-            if any(part.startswith("__") or part == PARSED_DIR_NAME for part in candidate.relative_to(input_dir).parts):
+            if any(
+                part.startswith("__")
+                or part == PARSED_DIR_NAME
+                or part.endswith(".docling_raw")
+                or part.endswith(".parsed")
+                or part.endswith(".mineru_raw")
+                for part in candidate.relative_to(input_dir).parts
+            ):
                 continue
             if not candidate.is_file():
                 continue
@@ -3994,6 +4009,102 @@ def create_document_routes(
 
         except Exception as e:
             logger.error(f"Error requesting pipeline cancellation: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get(
+        "/chunks/lookup",
+        dependencies=[Depends(combined_auth)],
+    )
+    async def lookup_chunks(ids: str = Query(..., description="Comma-separated list of chunk IDs")):
+        """
+        Lookup chunk metadata (like original_url, page_num) by comma-separated chunk IDs.
+        """
+        chunk_ids = [cid.strip() for cid in ids.split(",") if cid.strip()]
+        if not chunk_ids:
+            return {}
+        try:
+            from lightrag.utils_pipeline import load_metadata_csv
+            import os
+            
+            lookup = load_metadata_csv()
+            chunks = await rag.text_chunks.get_by_ids(chunk_ids)
+            result = {}
+            for chunk_id, chunk_data in zip(chunk_ids, chunks):
+                if chunk_data:
+                    file_path = chunk_data.get("file_path") or ""
+                    original_url = chunk_data.get("original_url")
+                    page_num = chunk_data.get("page_num")
+                    doc_title = chunk_data.get("doc_title")
+                    category = chunk_data.get("category")
+                    
+                    if not original_url and file_path:
+                        # Normalize path
+                        norm_path = file_path.replace("\\", "/")
+                        for prefix in ("/workspace/tdsb_community_hub/lightrag/", "/workspace/tdsb_community_hub/archive/leadership/", "lightrag/", "archive/leadership/"):
+                            if norm_path.startswith(prefix):
+                                norm_path = norm_path[len(prefix):]
+                        norm_path = norm_path.replace("//", "/").lstrip("/")
+                        
+                        meta = lookup.get(norm_path)
+                        if not meta:
+                            basename = os.path.basename(norm_path)
+                            for k, v in lookup.items():
+                                if os.path.basename(k) == basename:
+                                    meta = v
+                                    break
+                        if meta:
+                            original_url = meta.get("url")
+                            doc_title = meta.get("title")
+                            category = meta.get("category")
+                            
+                    result[chunk_id] = {
+                        "original_url": original_url,
+                        "page_num": page_num,
+                        "file_path": file_path,
+                        "doc_title": doc_title,
+                        "category": category,
+                    }
+            return result
+        except Exception as e:
+            logger.error(f"Error looking up chunks: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get(
+        "/document/metadata/lookup",
+        dependencies=[Depends(combined_auth)],
+    )
+    async def lookup_document_metadata(path: str = Query(..., description="Local path or filename of the document")):
+        """
+        Lookup document metadata (original URL, category, title, etc.) from the leadership CSV.
+        """
+        try:
+            from lightrag.utils_pipeline import load_metadata_csv, parse_metadata_fallback
+            import os
+            
+            lookup = load_metadata_csv()
+            # Normalize path
+            norm_path = path.replace("\\", "/")
+            for prefix in ("/workspace/tdsb_community_hub/lightrag/", "/workspace/tdsb_community_hub/archive/leadership/", "lightrag/", "archive/leadership/"):
+                if norm_path.startswith(prefix):
+                    norm_path = norm_path[len(prefix):]
+            norm_path = norm_path.replace("//", "/").lstrip("/")
+            
+            # 1. Direct lookup
+            meta = lookup.get(norm_path)
+            if not meta:
+                # 2. Lookup by basename
+                basename = os.path.basename(norm_path)
+                for k, v in lookup.items():
+                    if os.path.basename(k) == basename:
+                        meta = v
+                        break
+            if not meta:
+                meta = parse_metadata_fallback(norm_path)
+            return meta
+        except Exception as e:
+            logger.error(f"Error looking up document metadata: {str(e)}")
             logger.error(traceback.format_exc())
             raise HTTPException(status_code=500, detail=str(e))
 

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useGraphStore, RawNodeType, RawEdgeType } from '@/stores/graph'
 import { useBackendState } from '@/stores/state'
 import Text from '@/components/ui/Text'
@@ -7,6 +7,7 @@ import useLightragGraph from '@/hooks/useLightragGraph'
 import { useTranslation } from 'react-i18next'
 import { GitBranchPlus, Scissors, Lock } from 'lucide-react'
 import EditablePropertyRow from './EditablePropertyRow'
+import { lookupChunks, lookupDocumentMetadata } from '@/api/lightrag'
 
 /**
  * Component that view properties of elements in graph.
@@ -158,6 +159,126 @@ const refineEdgeProperties = (edge: RawEdgeType): EdgeType => {
   }
 }
 
+const FilePropertyRow = ({ value }: { value: string }) => {
+  const [urls, setUrls] = useState<Record<string, string>>({})
+  const [loading, setLoading] = useState(false)
+
+  const files = useMemo(() => {
+    return typeof value === 'string' ? value.split('<SEP>').map(f => f.trim()).filter(Boolean) : []
+  }, [value])
+
+  useEffect(() => {
+    if (files.length === 0) return
+    setLoading(true)
+    Promise.all(
+      files.map(file => 
+        lookupDocumentMetadata(file)
+          .then(meta => ({ file, url: meta?.url || null }))
+          .catch(() => ({ file, url: null }))
+      )
+    ).then(results => {
+      const urlMap: Record<string, string> = {}
+      for (const res of results) {
+        if (res.url) {
+          urlMap[res.file] = res.url
+        }
+      }
+      setUrls(urlMap)
+    }).finally(() => setLoading(false))
+  }, [files])
+
+  if (loading) {
+    return <span className="text-primary/40 animate-pulse">Loading links...</span>
+  }
+
+  if (files.length === 0) {
+    return <span>None</span>
+  }
+
+  return (
+    <div className="flex flex-col gap-1 mt-1">
+      {files.map((file) => {
+        const url = urls[file]
+        if (url) {
+          return (
+            <a
+              key={file}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline font-medium break-all"
+            >
+              {file}
+            </a>
+          )
+        }
+        return <span key={file}>{file}</span>
+      })}
+    </div>
+  )
+}
+
+const SourceIdPropertyRow = ({ value }: { value: string }) => {
+  const [chunksInfo, setChunksInfo] = useState<Record<string, { original_url?: string; page_num?: number }>>({})
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!value) return
+    setLoading(true)
+    lookupChunks(value)
+      .then((info) => {
+        if (info) {
+          setChunksInfo(info)
+        }
+      })
+      .catch((err) => console.error('Error fetching chunks:', err))
+      .finally(() => setLoading(false))
+  }, [value])
+
+  const chunkIds = useMemo(() => {
+    return typeof value === 'string' ? value.split('<SEP>').map(id => id.trim()).filter(Boolean) : []
+  }, [value])
+
+  if (loading) {
+    return <span className="text-primary/40 animate-pulse">Loading chunks...</span>
+  }
+
+  if (chunkIds.length === 0) {
+    return <span>None</span>
+  }
+
+  return (
+    <div className="flex flex-col gap-1 mt-1">
+      {chunkIds.map((id) => {
+        const info = chunksInfo[id]
+        if (info && info.original_url) {
+          const urlWithPage = info.page_num
+            ? `${info.original_url}#page=${info.page_num}`
+            : info.original_url
+          return (
+            <a
+              key={id}
+              href={urlWithPage}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline font-medium text-xs break-all"
+              title={id}
+            >
+              {id.length > 30 ? `${id.substring(0, 15)}...${id.substring(id.length - 15)}` : id}
+              {info.page_num ? ` (Page ${info.page_num})` : ''}
+            </a>
+          )
+        }
+        return (
+          <span key={id} className="text-primary/50 text-xs break-all" title={id}>
+            {id.length > 30 ? `${id.substring(0, 15)}...${id.substring(id.length - 15)}` : id}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
 const PropertyRow = ({
   name,
   value,
@@ -232,6 +353,33 @@ const PropertyRow = ({
         pipelineBusy={pipelineBusy}
         tooltip={tooltip || (typeof value === 'string' ? value : JSON.stringify(value, null, 2))}
       />
+    )
+  }
+
+  if ((name === 'file_path' || name.toLowerCase() === 'file') && typeof value === 'string') {
+    return (
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <span className="text-primary/60 tracking-wide whitespace-nowrap">
+            {getPropertyNameTranslation(name)}
+          </span>:
+        </div>
+        <FilePropertyRow value={value} />
+      </div>
+    )
+  }
+
+  if (name === 'source_id' && typeof value === 'string') {
+    return (
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <span className="text-primary/60 tracking-wide whitespace-nowrap">
+            {getPropertyNameTranslation(name)}
+            {truncate && <sup className="text-red-500">†</sup>}
+          </span>:
+        </div>
+        <SourceIdPropertyRow value={value} />
+      </div>
     )
   }
 

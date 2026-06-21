@@ -540,6 +540,16 @@ export const queryGraphs = async (
   return response.data
 }
 
+export const lookupChunks = async (ids: string): Promise<Record<string, { original_url?: string; page_num?: number; file_path?: string; doc_title?: string; category?: string }>> => {
+  const response = await axiosInstance.get(`/documents/chunks/lookup?ids=${encodeURIComponent(ids)}`)
+  return response.data
+}
+
+export const lookupDocumentMetadata = async (path: string): Promise<Record<string, any>> => {
+  const response = await axiosInstance.get(`/documents/document/metadata/lookup?path=${encodeURIComponent(path)}`)
+  return response.data
+}
+
 export const getGraphLabels = async (): Promise<string[]> => {
   const response = await axiosInstance.get('/graph/label/list')
   return response.data

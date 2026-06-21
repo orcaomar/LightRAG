@@ -14,6 +14,7 @@ import json
 import os
 import re
 import time
+import csv
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import quote, unquote, urlsplit
@@ -39,12 +40,212 @@ from lightrag.utils import (
 PLACEHOLDER_DOCUMENT_SOURCES = {"", "no-file-path", "unknown_source"}
 SIDECAR_LOCATION_UNKNOWN = "unknown_source"
 
+CSV_PATH = "/workspace/tdsb_community_hub/archive/leadership/leadership_documents.csv"
+_CSV_LOOKUP = None
+
+def load_metadata_csv() -> dict[str, dict[str, str]]:
+    global _CSV_LOOKUP
+    if _CSV_LOOKUP is not None:
+        return _CSV_LOOKUP
+    
+    _CSV_LOOKUP = {}
+    if not os.path.exists(CSV_PATH):
+        logger.warning(f"CSV metadata file not found at {CSV_PATH}. Fallback to folder-parsing only.")
+        return _CSV_LOOKUP
+        
+    try:
+        with open(CSV_PATH, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                local_path = row.get("Local Path", "").strip()
+                if local_path:
+                    # Keep local_path matching relative structure
+                    _CSV_LOOKUP[local_path] = {
+                        "category": row.get("Category", "Unknown"),
+                        "year_meeting": row.get("Year/Meeting", "Unknown"),
+                        "title": row.get("Document Title", "Untitled Document"),
+                        "url": row.get("Original URL", "")
+                    }
+        logger.info(f"Loaded {len(_CSV_LOOKUP)} metadata records from CSV.")
+    except Exception as e:
+        logger.error(f"Error loading CSV metadata: {e}")
+    return _CSV_LOOKUP
+
+def parse_metadata_fallback(file_path: str) -> dict[str, str]:
+    parts = file_path.split("/")
+    category = "Unknown"
+    year_meeting = "Unknown"
+    title = os.path.basename(file_path)
+    url = ""
+    
+    if len(parts) > 1:
+        if parts[0] == "minutes":
+            category = "Board Minutes"
+            year_meeting = parts[1]  # The year folder name
+        elif parts[0] == "agendas":
+            category = "Meeting Agenda"
+            year_meeting = parts[1]  # The meeting directory name
+            
+    return {
+        "category": category,
+        "year_meeting": year_meeting,
+        "title": title,
+        "url": url
+    }
+
+def extract_numerical_year(year_meeting_str: str) -> int:
+    match = re.search(r'(?<!\d)(199\d|20[0-2]\d)(?!\d)', year_meeting_str)
+    if match:
+        return int(match.group(1))
+    return 1997  # Fallback default
+
+def extract_document_date(title: str, year_meeting: str, filename: str) -> str:
+    months = ["January", "February", "March", "April", "May", "June", 
+              "July", "August", "September", "October", "November", "December",
+              "Jan", "Feb", "Mar", "Apr", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+              
+    for m in months:
+        pattern = rf'\b({m})\b\s*(\d{{1,2}})[,\s]*(\d{{4}})\b'
+        match = re.search(pattern, title, re.IGNORECASE)
+        if match:
+            try:
+                mon_str = match.group(1).title()[:3]
+                day_val = int(match.group(2))
+                year_val = int(match.group(3))
+                month_num = {
+                    "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
+                    "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12
+                }[mon_str]
+                return f"{year_val:04d}-{month_num:02d}-{day_val:02d}"
+            except Exception:
+                pass
+                
+    for m in months:
+        pattern = rf'\b({m})\b\s*(\d{{1,2}})[,\s]*(\d{{4}})\b'
+        match = re.search(pattern, year_meeting.replace("_", " "), re.IGNORECASE)
+        if match:
+            try:
+                mon_str = match.group(1).title()[:3]
+                day_val = int(match.group(2))
+                year_val = int(match.group(3))
+                month_num = {
+                    "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
+                    "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12
+                }[mon_str]
+                return f"{year_val:04d}-{month_num:02d}-{day_val:02d}"
+            except Exception:
+                pass
+                
+    # Try YYYYMMDD first
+    match = re.match(r'^(\d{8})', filename)
+    if match:
+        digits = match.group(1)
+        try:
+            year_val = int(digits[0:4])
+            mm = int(digits[4:6])
+            dd = int(digits[6:8])
+            if 1990 <= year_val <= 2030 and 1 <= mm <= 12 and 1 <= dd <= 31:
+                return f"{year_val:04d}-{mm:02d}-{dd:02d}"
+        except Exception:
+            pass
+
+    # Then try YYMMDD or 5 digits
+    match = re.match(r'^(\d{5,6})', filename)
+    if match:
+        digits = match.group(1)
+        if len(digits) == 5:
+            digits = "0" + digits
+        try:
+            yy = int(digits[0:2])
+            mm = int(digits[2:4])
+            dd = int(digits[4:6])
+            
+            year_val = 2000 + yy if yy < 50 else 1900 + yy
+            if 1 <= mm <= 12 and 1 <= dd <= 31:
+                return f"{year_val:04d}-{mm:02d}-{dd:02d}"
+        except Exception:
+            pass
+
+    for m in months:
+        pattern = rf'\b({m})\b[,\s]*(\d{{4}})\b'
+        match = re.search(pattern, title, re.IGNORECASE)
+        if match:
+            try:
+                mon_str = match.group(1).title()[:3]
+                year_val = int(match.group(2))
+                month_num = {
+                    "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
+                    "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12
+                }[mon_str]
+                return f"{year_val:04d}-{month_num:02d}"
+            except Exception:
+                pass
+
+    for m in months:
+        pattern = rf'\b({m})\b[,\s]*(\d{{4}})\b'
+        match = re.search(pattern, year_meeting.replace("_", " "), re.IGNORECASE)
+        if match:
+            try:
+                mon_str = match.group(1).title()[:3]
+                year_val = int(match.group(2))
+                month_num = {
+                    "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
+                    "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12
+                }[mon_str]
+                return f"{year_val:04d}-{month_num:02d}"
+            except Exception:
+                pass
+            
+    match_yr = re.search(r'\b(199\d|20[0-2]\d)\b', title)
+    if match_yr:
+        return f"{match_yr.group(1)}"
+        
+    match_yr = re.search(r'\b(199\d|20[0-2]\d)\b', year_meeting)
+    if match_yr:
+        return f"{match_yr.group(1)}"
+        
+    return ""
+
+
+def load_block_page_mapping(blocks_path: str | None) -> dict[str, int]:
+    """Load a mapping from blockid to its page number (1-based) from blocks.jsonl."""
+    mapping = {}
+    if not blocks_path or not os.path.exists(blocks_path):
+        return mapping
+        
+    try:
+        with open(blocks_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                    if obj.get("type") == "content":
+                        blockid = obj.get("blockid")
+                        positions = obj.get("positions", [])
+                        page_num = None
+                        for pos in positions:
+                            if isinstance(pos, dict) and pos.get("type") == "bbox":
+                                anchor = pos.get("anchor")
+                                if anchor and str(anchor).isdigit():
+                                    page_num = int(anchor)
+                                    break
+                        if blockid and page_num is not None:
+                            mapping[blockid] = page_num
+                except Exception:
+                    pass
+    except Exception as e:
+        logger.error(f"Error loading block page mapping: {e}")
+    return mapping
+
 
 def build_chunks_dict_from_chunking_result(
     chunking_result: list[dict[str, Any]],
     *,
     doc_id: str,
     file_path: str,
+    blocks_path: str | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Assemble the per-doc chunks dict written into chunks_vdb / text_chunks.
 
@@ -55,6 +256,36 @@ def build_chunks_dict_from_chunking_result(
     overwrite each other.
     """
     chunks: dict[str, dict[str, Any]] = {}
+    
+    # Resolve metadata for the current file path
+    rel_path = file_path
+    for prefix in ("/workspace/tdsb_community_hub/lightrag/", "/workspace/tdsb_community_hub/archive/leadership/", "lightrag/", "archive/leadership/"):
+        if rel_path.startswith(prefix):
+            rel_path = rel_path[len(prefix):]
+    rel_path = rel_path.replace("//", "/").lstrip("/")
+    
+    # Strip hint from filename only while keeping folder path
+    dirname = os.path.dirname(rel_path)
+    basename = os.path.basename(rel_path)
+    clean_basename = canonicalize_parser_hinted_basename(basename)
+    rel_path = os.path.join(dirname, clean_basename) if dirname else clean_basename
+
+    lookup = load_metadata_csv()
+    meta = lookup.get(rel_path)
+    if not meta:
+        meta = parse_metadata_fallback(rel_path)
+        
+    year_meeting = meta.get("year_meeting", "Unknown")
+    year = extract_numerical_year(year_meeting)
+    filename = os.path.basename(rel_path)
+    doc_date = extract_document_date(meta.get("title", ""), year_meeting, filename)
+    
+    category = meta.get("category", "Unknown")
+    doc_title = meta.get("title", "Untitled Document")
+    original_url = meta.get("url", "")
+
+    block_page_map = load_block_page_mapping(blocks_path)
+
     for dp in chunking_result:
         chunk_content = dp.get("content", "")
         if not chunk_content:
@@ -90,12 +321,35 @@ def build_chunks_dict_from_chunking_result(
                 if key and key not in seen:
                     seen.add(key)
                     seed_cache_list.append(key)
+                    
+        # Extract page number from sidecar
+        page_num = None
+        sidecar = dp.get("sidecar")
+        if isinstance(sidecar, dict):
+            refs = sidecar.get("refs", [])
+            for ref in refs:
+                ref_id = ref.get("id")
+                if ref_id in block_page_map:
+                    page_num = block_page_map[ref_id]
+                    break
+            if page_num is None:
+                sidecar_id = sidecar.get("id")
+                if sidecar_id in block_page_map:
+                    page_num = block_page_map[sidecar_id]
+                    
         stored_chunk = {k: v for k, v in dp.items() if k != "_source_span"}
         chunks[chunk_key] = {
             **stored_chunk,
             "full_doc_id": doc_id,
             "file_path": file_path,
             "llm_cache_list": seed_cache_list,
+            "category": category,
+            "year_meeting": year_meeting,
+            "doc_title": doc_title,
+            "original_url": original_url,
+            "year": year,
+            "doc_date": doc_date,
+            "page_num": page_num,
         }
     return chunks
 
