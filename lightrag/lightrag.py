@@ -1836,6 +1836,8 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                 deduped_entities.pop(entity_name, None)
                 deduped_entities[entity_name] = entity_data
 
+            from lightrag.operate import _compute_temporal_fields
+
             # Insert entities into knowledge graph (batch for performance)
             all_entities_data: list[dict[str, str]] = []
             entity_nodes: list[tuple[str, dict[str, str]]] = []
@@ -1854,6 +1856,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                         f"Entity '{entity_name}' has an UNKNOWN source_id. Please check the source mapping."
                     )
 
+                node_temporal = _compute_temporal_fields(file_path)
                 node_data: dict[str, str] = {
                     "entity_id": entity_name,
                     "entity_type": entity_type,
@@ -1861,6 +1864,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                     "source_id": source_id,
                     "file_path": file_path,
                     "created_at": int(time.time()),
+                    **node_temporal,
                 }
                 entity_nodes.append((entity_name, node_data))
                 node_data_copy = dict(node_data)
@@ -1934,6 +1938,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
 
                     for need_insert_id in [src_id, tgt_id]:
                         if need_insert_id not in existing_nodes:
+                            node_temporal = _compute_temporal_fields(file_path)
                             missing_nodes.append(
                                 (
                                     need_insert_id,
@@ -1944,6 +1949,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                                         "entity_type": "UNKNOWN",
                                         "file_path": file_path,
                                         "created_at": int(time.time()),
+                                        **node_temporal,
                                     },
                                 )
                             )
@@ -1951,6 +1957,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
 
                     normalized_src_id, normalized_tgt_id = sorted((src_id, tgt_id))
 
+                    edge_temporal = _compute_temporal_fields(file_path)
                     edge_data = {
                         "weight": relationship_data.get("weight", 1.0),
                         "description": relationship_data["description"],
@@ -1958,6 +1965,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                         "source_id": source_id,
                         "file_path": file_path,
                         "created_at": int(time.time()),
+                        **edge_temporal,
                     }
                     edge_list.append((src_id, tgt_id, edge_data))
 
@@ -1971,6 +1979,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                             "weight": relationship_data.get("weight", 1.0),
                             "file_path": file_path,
                             "created_at": int(time.time()),
+                            **edge_temporal,
                         }
                     )
 

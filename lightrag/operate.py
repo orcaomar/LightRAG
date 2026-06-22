@@ -1997,6 +1997,32 @@ async def _rebuild_single_relationship(
             pipeline_status["history_messages"].append(status_message)
 
 
+def _compute_temporal_fields(file_path: str) -> dict[str, str]:
+    from lightrag.utils_pipeline import get_file_date
+    
+    if not file_path:
+        return {"first_ref": "", "last_ref": "", "all_times": ""}
+        
+    files = [fp.strip() for fp in file_path.split(GRAPH_FIELD_SEP) if fp.strip()]
+    dates = []
+    for fp in files:
+        if fp.startswith("..."):
+            continue
+        dt = get_file_date(fp)
+        if dt:
+            dates.append(dt)
+            
+    if not dates:
+        return {"first_ref": "", "last_ref": "", "all_times": ""}
+        
+    unique_dates = sorted(list(set(dates)))
+    return {
+        "first_ref": unique_dates[0],
+        "last_ref": unique_dates[-1],
+        "all_times": GRAPH_FIELD_SEP.join(unique_dates)
+    }
+
+
 async def _merge_nodes_then_upsert(
     entity_name: str,
     nodes_data: list[dict],
@@ -2280,6 +2306,7 @@ async def _merge_nodes_then_upsert(
             logger.debug(status_message)
 
         # 11. Update both graph and vector db
+        temporal_fields = _compute_temporal_fields(file_path)
         node_data = dict(
             entity_id=entity_name,
             entity_type=entity_type,
@@ -2288,6 +2315,7 @@ async def _merge_nodes_then_upsert(
             file_path=file_path,
             created_at=int(time.time()),
             truncate=truncation_info,
+            **temporal_fields,
         )
         await knowledge_graph_inst.upsert_node(
             entity_name,
@@ -2640,6 +2668,7 @@ async def _merge_edges_then_upsert(
             if existing_node is None:
                 # Node doesn't exist - create new node
                 node_created_at = int(time.time())
+                node_temporal = _compute_temporal_fields(file_path)
                 node_data = {
                     "entity_id": need_insert_id,
                     "source_id": source_id,
@@ -2648,6 +2677,7 @@ async def _merge_edges_then_upsert(
                     "file_path": file_path,
                     "created_at": node_created_at,
                     "truncate": "",
+                    **node_temporal,
                 }
                 await knowledge_graph_inst.upsert_node(
                     need_insert_id, node_data=node_data
@@ -2770,9 +2800,11 @@ async def _merge_edges_then_upsert(
 
                 if limited_source_id_str != existing_node.get("source_id", ""):
                     updated = True
+                    node_temporal = _compute_temporal_fields(existing_node.get("file_path", ""))
                     updated_node_data = {
                         **existing_node,
                         "source_id": limited_source_id_str,
+                        **node_temporal,
                     }
                     await knowledge_graph_inst.upsert_node(
                         need_insert_id, node_data=updated_node_data
@@ -2823,6 +2855,7 @@ async def _merge_edges_then_upsert(
 
         edge_created_at = int(time.time())
         edge_upsert_started = time.perf_counter()
+        edge_temporal = _compute_temporal_fields(file_path)
         await knowledge_graph_inst.upsert_edge(
             src_id,
             tgt_id,
@@ -2834,6 +2867,7 @@ async def _merge_edges_then_upsert(
                 file_path=file_path,
                 created_at=edge_created_at,
                 truncate=truncation_info,
+                **edge_temporal,
             ),
         )
         edge_upsert_elapsed = time.perf_counter() - edge_upsert_started

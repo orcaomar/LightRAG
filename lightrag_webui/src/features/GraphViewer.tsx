@@ -20,6 +20,7 @@ import PropertiesView from '@/components/graph/PropertiesView'
 import SettingsDisplay from '@/components/graph/SettingsDisplay'
 import Legend from '@/components/graph/Legend'
 import LegendButton from '@/components/graph/LegendButton'
+import YearRangeSlider from '@/components/graph/YearRangeSlider'
 
 import { useSettingsStore } from '@/stores/settings'
 import { useGraphStore } from '@/stores/graph'
@@ -219,6 +220,7 @@ const GraphViewer = () => {
               onChange={onSearchSelect}
             />
           )}
+          <YearRangeSlider />
         </div>
 
         <div className="bg-background/60 absolute bottom-2 left-2 flex flex-col rounded-xl border-2 backdrop-blur-lg">

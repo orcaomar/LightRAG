@@ -105,7 +105,7 @@ def extract_document_date(title: str, year_meeting: str, filename: str) -> str:
               "Jan", "Feb", "Mar", "Apr", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
               
     for m in months:
-        pattern = rf'\b({m})\b\s*(\d{{1,2}})[,\s]*(\d{{4}})\b'
+        pattern = rf'\b({m})\b\s*(\d{{1,2}})(?:\s*(?:and|&|,|-|to)\s*\d{{1,2}})*[,\s]+(\d{{4}})\b'
         match = re.search(pattern, title, re.IGNORECASE)
         if match:
             try:
@@ -121,7 +121,7 @@ def extract_document_date(title: str, year_meeting: str, filename: str) -> str:
                 pass
                 
     for m in months:
-        pattern = rf'\b({m})\b\s*(\d{{1,2}})[,\s]*(\d{{4}})\b'
+        pattern = rf'\b({m})\b\s*(\d{{1,2}})(?:\s*(?:and|&|,|-|to)\s*\d{{1,2}})*[,\s]+(\d{{4}})\b'
         match = re.search(pattern, year_meeting.replace("_", " "), re.IGNORECASE)
         if match:
             try:
@@ -143,9 +143,9 @@ def extract_document_date(title: str, year_meeting: str, filename: str) -> str:
         try:
             year_val = int(digits[0:4])
             mm = int(digits[4:6])
-            dd = int(digits[6:8])
-            if 1990 <= year_val <= 2030 and 1 <= mm <= 12 and 1 <= dd <= 31:
-                return f"{year_val:04d}-{mm:02d}-{dd:02d}"
+            digits_day = int(digits[6:8])
+            if 1990 <= year_val <= 2030 and 1 <= mm <= 12 and 1 <= digits_day <= 31:
+                return f"{year_val:04d}-{mm:02d}-{digits_day:02d}"
         except Exception:
             pass
 
@@ -154,7 +154,11 @@ def extract_document_date(title: str, year_meeting: str, filename: str) -> str:
     if match:
         digits = match.group(1)
         if len(digits) == 5:
-            digits = "0" + digits
+            # Check if year_meeting or title hints at 1990s, or if it starts with 7/8/9
+            if "199" in year_meeting or "199" in title or digits[0] in ("7", "8", "9"):
+                digits = "9" + digits
+            else:
+                digits = "0" + digits
         try:
             yy = int(digits[0:2])
             mm = int(digits[2:4])
@@ -1146,3 +1150,34 @@ def normalize_parser_result_to_content_list(
 # multimodal chunk injects its own entity/relation records while still under
 # its concurrency slot.  The chunk's ``sidecar.type`` (drawing/table/equation)
 # is the dispatch key; see operate.py for the new logic.
+
+
+def get_file_date(file_path: str) -> str:
+    """Resolve document parsed date YYYY-MM-DD from its file path using CSV/fallback metadata."""
+    if not file_path or file_path == "unknown_source":
+        return ""
+    
+    norm_path = file_path.strip()
+    for prefix in ["/workspace/tdsb_community_hub/archive/", "archive/"]:
+        if norm_path.startswith(prefix):
+            norm_path = norm_path[len(prefix):]
+            break
+
+    metadata_lookup = load_metadata_csv()
+    meta = metadata_lookup.get(norm_path)
+    if not meta:
+        # Fallback suffix lookup if norm_path is just a filename
+        suffix = "/" + norm_path
+        for k, v in metadata_lookup.items():
+            if k.endswith(suffix):
+                meta = v
+                break
+    if not meta:
+        meta = parse_metadata_fallback(norm_path)
+
+    title = meta.get("title", "")
+    year_meeting = meta.get("year_meeting", "")
+    filename = os.path.basename(norm_path)
+    
+    return extract_document_date(title, year_meeting, filename)
+

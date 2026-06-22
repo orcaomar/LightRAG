@@ -143,6 +143,10 @@ interface GraphState {
   graphDataVersion: number
   incrementGraphDataVersion: () => void
 
+  // Year filter for temporal filtering
+  yearFilter: [number, number]
+  setYearFilter: (filter: [number, number]) => void
+
   // Methods for updating graph elements and UI state together
   updateNodeAndSelect: (nodeId: string, entityId: string, propertyName: string, newValue: string) => Promise<void>
   updateEdgeAndSelect: (edgeId: string, dynamicId: string, sourceId: string, targetId: string, propertyName: string, newValue: string) => Promise<void>
@@ -153,6 +157,9 @@ const useGraphStoreBase = create<GraphState>()((set, get) => ({
   focusedNode: null,
   selectedEdge: null,
   focusedEdge: null,
+
+  yearFilter: [1997, 2026],
+  setYearFilter: (yearFilter: [number, number]) => set({ yearFilter }),
 
   moveToSelectedNode: false,
   isFetching: false,

@@ -160,6 +160,48 @@ const refineEdgeProperties = (edge: RawEdgeType): EdgeType => {
   }
 }
 
+const parseDateFromTitle = (title: string | null | undefined): Date => {
+  if (!title) return new Date(0)
+  
+  // Try matching month names first, e.g. "September 8 and 29, 1999"
+  const monthRegex = /(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2}(?:\s*(?:and|&|,)\s*\d{1,2})*|\d{1,2})?,?\s*(\d{4})/i
+  const match = title.match(monthRegex)
+  if (match) {
+    const monthStr = match[1].toLowerCase()
+    const dayStr = match[2] || '1'
+    const yearStr = match[3]
+    
+    const dayMatch = dayStr.match(/\d+/)
+    const day = dayMatch ? parseInt(dayMatch[0], 10) : 1
+    
+    const months: Record<string, number> = {
+      january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
+      july: 6, august: 7, september: 8, october: 9, november: 10, december: 11
+    }
+    return new Date(parseInt(yearStr, 10), months[monthStr], day)
+  }
+
+  // Fallback to YYYY-MM-DD
+  const yyyymmdd = title.match(/\b(\d{4})[-_](\d{2})[-_](\d{2})\b/)
+  if (yyyymmdd) {
+    return new Date(parseInt(yyyymmdd[1], 10), parseInt(yyyymmdd[2], 10) - 1, parseInt(yyyymmdd[3], 10))
+  }
+
+  // Fallback to YYMMDD / YMMDD
+  const yymmdd = title.match(/\b(\d{1,2})(\d{2})(\d{2})\b/)
+  if (yymmdd) {
+    let yy = parseInt(yymmdd[1], 10)
+    const mm = parseInt(yymmdd[2], 10) - 1
+    const dd = parseInt(yymmdd[3], 10)
+    if (yy < 100) {
+      yy = yy > 50 ? 1900 + yy : 2000 + yy
+    }
+    return new Date(yy, mm, dd)
+  }
+
+  return new Date(0)
+}
+
 const FilePropertyRow = ({ value }: { value: string }) => {
   const [metadata, setMetadata] = useState<Record<string, { url: string | null; title: string | null }>>({})
   const [loading, setLoading] = useState(false)
@@ -186,17 +228,27 @@ const FilePropertyRow = ({ value }: { value: string }) => {
     }).finally(() => setLoading(false))
   }, [files])
 
+  const sortedFiles = useMemo(() => {
+    return [...files].sort((a, b) => {
+      const titleA = metadata[a]?.title || a
+      const titleB = metadata[b]?.title || b
+      const dateA = parseDateFromTitle(titleA)
+      const dateB = parseDateFromTitle(titleB)
+      return dateB.getTime() - dateA.getTime()
+    })
+  }, [files, metadata])
+
   if (loading) {
     return <span className="text-primary/40 animate-pulse">Loading links...</span>
   }
 
-  if (files.length === 0) {
+  if (sortedFiles.length === 0) {
     return <span>None</span>
   }
 
   return (
     <div className="flex flex-col gap-1 mt-1">
-      {files.map((file) => {
+      {sortedFiles.map((file) => {
         const meta = metadata[file]
         const displayLabel = meta?.title || file
         const url = meta?.url
@@ -240,18 +292,30 @@ const SourceIdPropertyRow = ({ value }: { value: string }) => {
       .finally(() => setLoading(false))
   }, [chunkIds])
 
+  const sortedChunkIds = useMemo(() => {
+    return [...chunkIds].sort((a, b) => {
+      const infoA = chunksInfo[a]
+      const infoB = chunksInfo[b]
+      const titleA = infoA?.doc_title || a
+      const titleB = infoB?.doc_title || b
+      const dateA = parseDateFromTitle(titleA)
+      const dateB = parseDateFromTitle(titleB)
+      return dateB.getTime() - dateA.getTime()
+    })
+  }, [chunkIds, chunksInfo])
+
   if (loading) {
     return <span className="text-primary/40 animate-pulse">Loading chunks...</span>
   }
 
-  if (chunkIds.length === 0) {
+  if (sortedChunkIds.length === 0) {
     return <span>None</span>
   }
 
   return (
     <TooltipProvider delayDuration={200}>
       <div className="flex flex-col gap-1 mt-1">
-        {chunkIds.map((id) => {
+        {sortedChunkIds.map((id) => {
           const info = chunksInfo[id]
           const docTitle = info?.doc_title || (id.length > 30 ? `${id.substring(0, 15)}...${id.substring(id.length - 15)}` : id)
           const pageSuffix = info?.page_num ? ` (Page ${info.page_num})` : ''

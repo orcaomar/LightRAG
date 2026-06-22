@@ -43,6 +43,7 @@ const GraphControl = ({ disableHoverEffect }: { disableHoverEffect?: boolean }) 
   const selectedEdge = useGraphStore.use.selectedEdge()
   const focusedEdge = useGraphStore.use.focusedEdge()
   const sigmaGraph = useGraphStore.use.sigmaGraph()
+  const yearFilter = useGraphStore.use.yearFilter()
 
   // Track system theme changes when theme is set to 'system'
   const [systemThemeIsDark, setSystemThemeIsDark] = useState(() =>
@@ -222,6 +223,7 @@ const GraphControl = ({ disableHoverEffect }: { disableHoverEffect?: boolean }) 
       (theme === 'system' && window.document.documentElement.classList.contains('dark'))
     const labelColor = isDarkTheme ? Constants.labelColorDarkTheme : undefined
     const edgeColor = isDarkTheme ? Constants.edgeColorDarkTheme : undefined
+    const [startYear, endYear] = yearFilter
 
     // Update all dynamic settings directly without recreating the sigma container
     setSettings({
@@ -238,6 +240,23 @@ const GraphControl = ({ disableHoverEffect }: { disableHoverEffect?: boolean }) 
         if (!graph.hasNode(node)) {
           console.warn(`Node ${node} not found in graph during theme switch, returning default data`)
           return { ...data, highlighted: false, labelColor }
+        }
+
+        // Apply temporal/year range filter
+        const rawGraph = useGraphStore.getState().rawGraph
+        const rawNode = rawGraph?.getNode(node)
+        if (rawNode && rawNode.properties) {
+          const firstRef = rawNode.properties.first_ref
+          const lastRef = rawNode.properties.last_ref
+          if (firstRef && lastRef) {
+            const startY = parseInt(firstRef.substring(0, 4))
+            const endY = parseInt(lastRef.substring(0, 4))
+            if (!isNaN(startY) && !isNaN(endY)) {
+              if (startY > endYear || endY < startYear) {
+                return { ...data, hidden: true, labelColor }
+              }
+            }
+          }
         }
 
         const newData: NodeType & {
@@ -297,6 +316,51 @@ const GraphControl = ({ disableHoverEffect }: { disableHoverEffect?: boolean }) 
           return { ...data, hidden: false, labelColor, color: edgeColor }
         }
 
+        // Apply temporal/year range filter to edge itself
+        const rawGraph = useGraphStore.getState().rawGraph
+        const rawEdge = rawGraph?.getEdge(edge, true)
+        if (rawEdge && rawEdge.properties) {
+          const firstRef = rawEdge.properties.first_ref
+          const lastRef = rawEdge.properties.last_ref
+          if (firstRef && lastRef) {
+            const startY = parseInt(firstRef.substring(0, 4))
+            const endY = parseInt(lastRef.substring(0, 4))
+            if (!isNaN(startY) && !isNaN(endY)) {
+              if (startY > endYear || endY < startYear) {
+                return { ...data, hidden: true, labelColor, color: edgeColor }
+              }
+            }
+          }
+        }
+
+        // Hide edge if either endpoint node is filtered/hidden
+        const source = graph.source(edge)
+        const target = graph.target(edge)
+        const sourceNode = rawGraph?.getNode(source)
+        if (sourceNode && sourceNode.properties) {
+          const sFirstRef = sourceNode.properties.first_ref
+          const sLastRef = sourceNode.properties.last_ref
+          if (sFirstRef && sLastRef) {
+            const startY = parseInt(sFirstRef.substring(0, 4))
+            const endY = parseInt(sLastRef.substring(0, 4))
+            if (!isNaN(startY) && !isNaN(endY) && (startY > endYear || endY < startYear)) {
+              return { ...data, hidden: true, labelColor, color: edgeColor }
+            }
+          }
+        }
+        const targetNode = rawGraph?.getNode(target)
+        if (targetNode && targetNode.properties) {
+          const tFirstRef = targetNode.properties.first_ref
+          const tLastRef = targetNode.properties.last_ref
+          if (tFirstRef && tLastRef) {
+            const startY = parseInt(tFirstRef.substring(0, 4))
+            const endY = parseInt(tLastRef.substring(0, 4))
+            if (!isNaN(startY) && !isNaN(endY) && (startY > endYear || endY < startYear)) {
+              return { ...data, hidden: true, labelColor, color: edgeColor }
+            }
+          }
+        }
+
         const newData = { ...data, hidden: false, labelColor, color: edgeColor }
 
         if (!disableHoverEffect) {
@@ -352,7 +416,8 @@ const GraphControl = ({ disableHoverEffect }: { disableHoverEffect?: boolean }) 
     hideUnselectedEdges,
     enableEdgeEvents,
     renderEdgeLabels,
-    renderLabels
+    renderLabels,
+    yearFilter
   ])
 
   return null
