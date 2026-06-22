@@ -81,6 +81,110 @@ class TestTemporalFields(unittest.TestCase):
         self.assertEqual(_compute_temporal_fields(""), {"first_ref": "", "last_ref": "", "all_times": ""})
         self.assertEqual(_compute_temporal_fields("unknown_source"), {"first_ref": "", "last_ref": "", "all_times": ""})
 
+    def test_apply_token_truncation_temporal(self):
+        import asyncio
+        import tiktoken
+        from lightrag.operate import _apply_token_truncation
+        from lightrag.base import QueryParam
+        
+        tokenizer = tiktoken.get_encoding("cl100k_base")
+        search_result = {
+            "final_entities": [
+                {
+                    "entity_name": "Test Entity",
+                    "entity_type": "Person",
+                    "description": "A test description",
+                    "first_ref": "2020-01-01",
+                    "last_ref": "2023-01-01",
+                    "created_at": 1600000000,
+                    "file_path": "test.pdf"
+                }
+            ],
+            "final_relations": [
+                {
+                    "src_id": "Entity A",
+                    "tgt_id": "Entity B",
+                    "description": "Relations desc",
+                    "first_ref": "2021-02-02",
+                    "last_ref": "2022-02-02",
+                    "created_at": 1600000000,
+                    "file_path": "test.pdf"
+                }
+            ]
+        }
+        query_param = QueryParam(max_entity_tokens=1000, max_relation_tokens=1000)
+        global_config = {"tokenizer": tokenizer}
+        
+        async def run_test():
+            return await _apply_token_truncation(search_result, query_param, global_config)
+            
+        result = asyncio.run(run_test())
+        
+        self.assertIn("entities_context", result)
+        self.assertIn("relations_context", result)
+        
+        entities_ctx = result["entities_context"]
+        self.assertEqual(len(entities_ctx), 1)
+        self.assertEqual(entities_ctx[0]["first_referenced"], "2020-01-01")
+        self.assertEqual(entities_ctx[0]["last_referenced"], "2023-01-01")
+        
+        relations_ctx = result["relations_context"]
+        self.assertEqual(len(relations_ctx), 1)
+        self.assertEqual(relations_ctx[0]["first_referenced"], "2021-02-02")
+        self.assertEqual(relations_ctx[0]["last_referenced"], "2022-02-02")
+
+    def test_build_context_str_temporal(self):
+        import asyncio
+        import tiktoken
+        from lightrag.operate import _build_context_str
+        from lightrag.base import QueryParam
+        
+        tokenizer = tiktoken.get_encoding("cl100k_base")
+        query_param = QueryParam(max_total_tokens=2048)
+        global_config = {"tokenizer": tokenizer}
+        
+        entities_context = [
+            {
+                "entity": "Test Entity",
+                "type": "Person",
+                "description": "A test description",
+                "first_referenced": "2020-01-01",
+                "last_referenced": "2023-01-01",
+                "created_at": "2020-01-01 00:00:00",
+                "file_path": "test.pdf"
+            }
+        ]
+        relations_context = []
+        merged_chunks = [
+            {
+                "content": "Test chunk content.",
+                "file_path": "test.pdf",
+                "chunk_id": "chunk-123",
+                "doc_date": "2022-05-05",
+            }
+        ]
+        
+        async def run_test():
+            return await _build_context_str(
+                entities_context=entities_context,
+                relations_context=relations_context,
+                merged_chunks=merged_chunks,
+                query="test query",
+                query_param=query_param,
+                global_config=global_config
+            )
+            
+        context_str, raw_data = asyncio.run(run_test())
+        
+        # Check that context_str contains doc_date (as document_date)
+        self.assertIn("document_date", context_str)
+        self.assertIn("2022-05-05", context_str)
+        
+        # Check raw_data structured payload
+        chunks_data = raw_data["data"]["chunks"]
+        self.assertEqual(len(chunks_data), 1)
+        self.assertEqual(chunks_data[0]["document_date"], "2022-05-05")
+
 
 if __name__ == "__main__":
     unittest.main()

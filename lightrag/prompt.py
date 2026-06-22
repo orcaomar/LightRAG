@@ -354,6 +354,7 @@ Consider the conversation history if provided to maintain conversational flow an
 2. Content & Grounding:
   - Strictly adhere to the provided context from the **Context**; DO NOT invent, assume, or infer any information not explicitly stated.
   - If the answer cannot be found in the **Context**, state that you do not have enough information to answer. Do not attempt to guess.
+  - **Temporal Reasoning:** Pay close attention to the `document_date` fields on Document Chunks and the `first_referenced` and `last_referenced` fields on Knowledge Graph Data. If the context contains conflicting information (e.g., policy updates, staff appointments, or budget decisions), prioritize the information associated with the newer dates to reflect the most current state of affairs, and structure timelines chronologically when relevant.
 
 3. Formatting & Language:
   - The response MUST be in the same language as the user query.
@@ -408,6 +409,7 @@ Consider the conversation history if provided to maintain conversational flow an
 2. Content & Grounding:
   - Strictly adhere to the provided context from the **Context**; DO NOT invent, assume, or infer any information not explicitly stated.
   - If the answer cannot be found in the **Context**, state that you do not have enough information to answer. Do not attempt to guess.
+  - **Temporal Reasoning:** Pay close attention to the `document_date` fields on Document Chunks. If the context contains conflicting information, prioritize the information associated with the newer dates to reflect the most current state of affairs, and structure timelines chronologically when relevant.
 
 3. Formatting & Language:
   - The response MUST be in the same language as the user query.

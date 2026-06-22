@@ -4833,6 +4833,8 @@ def convert_to_user_format(
                     "source_id": original_entity.get("source_id", ""),
                     "file_path": original_entity.get("file_path", "unknown_source"),
                     "created_at": original_entity.get("created_at", ""),
+                    "first_referenced": original_entity.get("first_ref", ""),
+                    "last_referenced": original_entity.get("last_ref", ""),
                 }
             )
         else:
@@ -4845,6 +4847,8 @@ def convert_to_user_format(
                     "source_id": entity.get("source_id", ""),
                     "file_path": entity.get("file_path", "unknown_source"),
                     "created_at": entity.get("created_at", ""),
+                    "first_referenced": entity.get("first_referenced", ""),
+                    "last_referenced": entity.get("last_referenced", ""),
                 }
             )
 
@@ -4872,6 +4876,8 @@ def convert_to_user_format(
                     "source_id": original_relation.get("source_id", ""),
                     "file_path": original_relation.get("file_path", "unknown_source"),
                     "created_at": original_relation.get("created_at", ""),
+                    "first_referenced": original_relation.get("first_ref", ""),
+                    "last_referenced": original_relation.get("last_ref", ""),
                 }
             )
         else:
@@ -4886,6 +4892,8 @@ def convert_to_user_format(
                     "source_id": relation.get("source_id", ""),
                     "file_path": relation.get("file_path", "unknown_source"),
                     "created_at": relation.get("created_at", ""),
+                    "first_referenced": relation.get("first_referenced", ""),
+                    "last_referenced": relation.get("last_referenced", ""),
                 }
             )
 
@@ -4897,6 +4905,7 @@ def convert_to_user_format(
             "content": chunk.get("content", ""),
             "file_path": chunk.get("file_path", "unknown_source"),
             "chunk_id": chunk.get("chunk_id", ""),
+            "document_date": chunk.get("doc_date", ""),
         }
         formatted_chunks.append(chunk_data)
 

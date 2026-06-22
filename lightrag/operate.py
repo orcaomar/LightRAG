@@ -4333,6 +4333,7 @@ async def _get_vector_context(
                     "file_path": result.get("file_path", "unknown_source"),
                     "source_type": "vector",  # Mark the source type
                     "chunk_id": result.get("id"),  # Add chunk_id for deduplication
+                    "doc_date": result.get("doc_date", ""),
                 }
                 valid_chunks.append(chunk_with_metadata)
 
@@ -4611,6 +4612,8 @@ async def _apply_token_truncation(
                 "entity": entity_name,
                 "type": entity.get("entity_type", "UNKNOWN"),
                 "description": entity.get("description", "UNKNOWN"),
+                "first_referenced": entity.get("first_ref", ""),
+                "last_referenced": entity.get("last_ref", ""),
                 "created_at": created_at,
                 "file_path": entity.get("file_path", "unknown_source"),
             }
@@ -4638,6 +4641,8 @@ async def _apply_token_truncation(
                 "entity1": entity1,
                 "entity2": entity2,
                 "description": relation.get("description", "UNKNOWN"),
+                "first_referenced": relation.get("first_ref", ""),
+                "last_referenced": relation.get("last_ref", ""),
                 "created_at": created_at,
                 "file_path": relation.get("file_path", "unknown_source"),
             }
@@ -4826,6 +4831,7 @@ async def _merge_all_chunks(
                         "content": chunk["content"],
                         "file_path": chunk.get("file_path", "unknown_source"),
                         "chunk_id": chunk_id,
+                        "doc_date": chunk.get("doc_date", ""),
                     }
                 )
 
@@ -4840,6 +4846,7 @@ async def _merge_all_chunks(
                         "content": chunk["content"],
                         "file_path": chunk.get("file_path", "unknown_source"),
                         "chunk_id": chunk_id,
+                        "doc_date": chunk.get("doc_date", ""),
                     }
                 )
 
@@ -4854,6 +4861,7 @@ async def _merge_all_chunks(
                         "content": chunk["content"],
                         "file_path": chunk.get("file_path", "unknown_source"),
                         "chunk_id": chunk_id,
+                        "doc_date": chunk.get("doc_date", ""),
                     }
                 )
 
@@ -4976,6 +4984,7 @@ async def _build_context_str(
     for i, chunk in enumerate(truncated_chunks):
         entry = {
             "reference_id": chunk["reference_id"],
+            "document_date": chunk.get("doc_date", ""),
             "content": chunk["content"],
         }
         if chunk.get("content_headings"):
