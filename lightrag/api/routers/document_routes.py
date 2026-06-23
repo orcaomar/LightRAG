@@ -4016,7 +4016,10 @@ def create_document_routes(
         "/chunks/lookup",
         dependencies=[Depends(combined_auth)],
     )
-    async def lookup_chunks(ids: str = Query(..., description="Comma-separated list of chunk IDs")):
+    async def lookup_chunks(
+        ids: str = Query(..., description="Comma-separated list of chunk IDs"),
+        exclude_content: bool = Query(False, description="Whether to exclude chunk content"),
+    ):
         """
         Lookup chunk metadata (like original_url, page_num) by comma-separated chunk IDs.
         """
@@ -4079,9 +4082,7 @@ def create_document_routes(
                     if not original_url and file_path:
                         # Normalize path
                         norm_path = file_path.replace("\\", "/")
-                        for prefix in ("/workspace/tdsb_community_hub/lightrag/", "/workspace/tdsb_community_hub/archive/leadership/", "lightrag/", "archive/leadership/"):
-                            if norm_path.startswith(prefix):
-                                norm_path = norm_path[len(prefix):]
+                        # remove leading slash and ensure no double slash
                         norm_path = norm_path.replace("//", "/").lstrip("/")
                         
                         meta = lookup.get(norm_path)
@@ -4098,14 +4099,16 @@ def create_document_routes(
                             if not category:
                                 category = meta.get("category")
                             
-                    result[chunk_id] = {
+                    item = {
                         "original_url": original_url,
                         "page_num": page_num,
                         "file_path": file_path,
                         "doc_title": doc_title,
                         "category": category,
-                        "content": chunk_data.get("content") or chunk_data.get("text") or "",
                     }
+                    if not exclude_content:
+                        item["content"] = chunk_data.get("content") or chunk_data.get("text") or ""
+                    result[chunk_id] = item
             return result
         except Exception as e:
             logger.error(f"Error looking up chunks: {str(e)}")

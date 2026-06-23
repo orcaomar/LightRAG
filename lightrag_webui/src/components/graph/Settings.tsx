@@ -180,6 +180,7 @@ export default function Settings() {
   const enableNodeDrag = useSettingsStore.use.enableNodeDrag()
   const enableHideUnselectedEdges = useSettingsStore.use.enableHideUnselectedEdges()
   const showEdgeLabel = useSettingsStore.use.showEdgeLabel()
+  const showEdgeArrow = useSettingsStore.use.showEdgeArrow()
   const minEdgeSize = useSettingsStore.use.minEdgeSize()
   const maxEdgeSize = useSettingsStore.use.maxEdgeSize()
   const graphQueryMaxDepth = useSettingsStore.use.graphQueryMaxDepth()
@@ -211,6 +212,13 @@ export default function Settings() {
     () =>
       useSettingsStore.setState((pre) => ({
         showEdgeLabel: !pre.showEdgeLabel
+      })),
+    []
+  )
+  const setShowEdgeArrow = useCallback(
+    () =>
+      useSettingsStore.setState((pre) => ({
+        showEdgeArrow: !pre.showEdgeArrow
       })),
     []
   )
@@ -321,6 +329,11 @@ export default function Settings() {
               checked={showEdgeLabel}
               onCheckedChange={setShowEdgeLabel}
               label={t('graphPanel.sideBar.settings.showEdgeLabel')}
+            />
+            <LabeledCheckBox
+              checked={showEdgeArrow}
+              onCheckedChange={setShowEdgeArrow}
+              label={t('graphPanel.sideBar.settings.showEdgeArrow')}
             />
             <LabeledCheckBox
               checked={enableHideUnselectedEdges}

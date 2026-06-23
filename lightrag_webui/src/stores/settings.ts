@@ -31,6 +31,7 @@ interface SettingsState {
   enableNodeDrag: boolean
 
   showEdgeLabel: boolean
+  showEdgeArrow: boolean
   enableHideUnselectedEdges: boolean
   enableEdgeEvents: boolean
 
@@ -97,11 +98,12 @@ const useSettingsStoreBase = create<SettingsState>()(
       enableNodeDrag: true,
 
       showEdgeLabel: false,
+      showEdgeArrow: true,
       enableHideUnselectedEdges: true,
       enableEdgeEvents: false,
 
-      minEdgeSize: 1,
-      maxEdgeSize: 1,
+      minEdgeSize: 2,
+      maxEdgeSize: 3,
 
       graphQueryMaxDepth: 3,
       graphMaxNodes: 1000,
@@ -238,7 +240,7 @@ const useSettingsStoreBase = create<SettingsState>()(
     {
       name: 'settings-storage',
       storage: createJSONStorage(() => localStorage),
-      version: 20,
+      version: 22,
       migrate: (state: any, version: number) => {
         if (version < 2) {
           state.showEdgeLabel = false
@@ -351,6 +353,13 @@ const useSettingsStoreBase = create<SettingsState>()(
             ...existing,
             ...suggestedUserPrompts.filter((p: string) => !existing.includes(p))
           ]
+        }
+        if (version < 21) {
+          state.showEdgeArrow = true
+        }
+        if (version < 22) {
+          state.minEdgeSize = 2
+          state.maxEdgeSize = 3
         }
         return state
       }

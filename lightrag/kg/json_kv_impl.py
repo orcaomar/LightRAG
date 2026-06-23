@@ -22,6 +22,8 @@ from .shared_storage import (
     set_all_update_flags,
     clear_all_update_flags,
     try_initialize_namespace,
+    try_set_namespace_loaded,
+    is_namespace_loaded,
 )
 
 
@@ -180,21 +182,35 @@ class JsonKVStorage(BaseKVStorage):
             self._data = await get_namespace_data(
                 self.namespace, workspace=self.workspace
             )
+            # Defer file load. We register initialization but do not load yet.
             if need_init:
+                # If we got the initialization permission, we register the namespace
+                # but let _ensure_loaded do the actual JSON read on first access.
+                logger.info(
+                    f"[{self.workspace}] Process {os.getpid()} KV initialize {self.namespace} (lazy load deferred)"
+                )
+
+    async def _ensure_loaded(self):
+        """Ensure the JSON file is loaded into self._data (lazy loading)."""
+        if await is_namespace_loaded(self.namespace, workspace=self.workspace):
+            return
+
+        async with self._storage_lock:
+            # Double check under lock
+            if await is_namespace_loaded(self.namespace, workspace=self.workspace):
+                return
+
+            if await try_set_namespace_loaded(self.namespace, workspace=self.workspace):
                 loaded_data = load_json(self._file_name) or {}
-                async with self._storage_lock:
-                    # Migrate legacy cache structure if needed
-                    if self.namespace.endswith("_cache"):
-                        loaded_data = await self._migrate_legacy_cache_structure(
-                            loaded_data
-                        )
-
-                    self._data.update(loaded_data)
-                    data_count = len(loaded_data)
-
-                    logger.info(
-                        f"[{self.workspace}] Process {os.getpid()} KV load {self.namespace} with {data_count} records"
+                if self.namespace.endswith("_cache"):
+                    loaded_data = await self._migrate_legacy_cache_structure(
+                        loaded_data
                     )
+                self._data.update(loaded_data)
+                data_count = len(loaded_data)
+                logger.info(
+                    f"[{self.workspace}] Lazy KV load {self.namespace} with {data_count} records"
+                )
 
     async def index_done_callback(self) -> None:
         """Flush dirty in-memory state to disk and clear all dirty flags.
@@ -221,6 +237,7 @@ class JsonKVStorage(BaseKVStorage):
         ``index_done_callback`` does globally is *clear* the dirty
         flags.
         """
+        await self._ensure_loaded()
         async with self._storage_lock:
             if self.storage_updated.value:
                 data_dict = (
@@ -250,6 +267,7 @@ class JsonKVStorage(BaseKVStorage):
                 await clear_all_update_flags(self.namespace, workspace=self.workspace)
 
     async def get_by_id(self, id: str) -> dict[str, Any] | None:
+        await self._ensure_loaded()
         async with self._storage_lock:
             result = self._data.get(id)
             if result:
@@ -263,6 +281,7 @@ class JsonKVStorage(BaseKVStorage):
             return result
 
     async def get_by_ids(self, ids: list[str]) -> list[dict[str, Any]]:
+        await self._ensure_loaded()
         async with self._storage_lock:
             results = []
             for id in ids:
@@ -281,6 +300,7 @@ class JsonKVStorage(BaseKVStorage):
             return results
 
     async def filter_keys(self, keys: set[str]) -> set[str]:
+        await self._ensure_loaded()
         async with self._storage_lock:
             return set(keys) - set(self._data.keys())
 
@@ -320,6 +340,7 @@ class JsonKVStorage(BaseKVStorage):
         )
         if self._storage_lock is None:
             raise StorageNotInitializedError("JsonKVStorage")
+        await self._ensure_loaded()
         async with self._storage_lock:
             # Add timestamps to data based on whether key exists.
             # The loop reads self._data (k in self._data) so it must stay inside
@@ -359,6 +380,7 @@ class JsonKVStorage(BaseKVStorage):
         Args:
             ids: List of document IDs to be deleted from storage
         """
+        await self._ensure_loaded()
         async with self._storage_lock:
             any_deleted = False
             for doc_id in ids:
@@ -375,6 +397,7 @@ class JsonKVStorage(BaseKVStorage):
         Returns:
             bool: True if storage contains no data, False otherwise
         """
+        await self._ensure_loaded()
         async with self._storage_lock:
             return len(self._data) == 0
 
@@ -403,6 +426,7 @@ class JsonKVStorage(BaseKVStorage):
             - On success: {"status": "success", "message": "data dropped"}
             - On failure: {"status": "error", "message": "<error details>"}
         """
+        await self._ensure_loaded()
         try:
             async with self._storage_lock:
                 self._data.clear()

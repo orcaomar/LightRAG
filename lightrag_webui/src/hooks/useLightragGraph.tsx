@@ -1,4 +1,4 @@
-import Graph, { UndirectedGraph } from 'graphology'
+import Graph, { DirectedGraph } from 'graphology'
 import { useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { errorMessage } from '@/lib/utils'
@@ -194,7 +194,7 @@ const createSigmaGraph = (rawGraph: RawGraph | null) => {
   }
 
   // Create new graph instance
-  const graph = new UndirectedGraph()
+  const graph = new DirectedGraph()
 
   // Add nodes from raw graph data
   for (const rawNode of rawGraph?.nodes ?? []) {
@@ -223,8 +223,7 @@ const createSigmaGraph = (rawGraph: RawGraph | null) => {
     rawEdge.dynamicId = graph.addEdge(rawEdge.source, rawEdge.target, {
       label: rawEdge.properties?.keywords || undefined,
       size: weight, // Set initial size based on weight
-      originalWeight: weight, // Store original weight for recalculation
-      type: 'curvedNoArrow' // Explicitly set edge type to no arrow
+      originalWeight: weight // Store original weight for recalculation
     })
   }
 
@@ -379,7 +378,7 @@ const useLightrangeGraph = () => {
         // Check if data is empty or invalid
         if (!data || !data.nodes || data.nodes.length === 0) {
           // Create a graph with a single "Graph Is Empty" node
-          const emptyGraph = new UndirectedGraph();
+          const emptyGraph = new DirectedGraph();
 
           // Add a single node with "Graph Is Empty" label
           emptyGraph.addNode('empty-graph-node', {
@@ -623,7 +622,7 @@ const useLightrangeGraph = () => {
 
         // Helper function to update node sizes
         const updateNodeSizes = (
-          sigmaGraph: UndirectedGraph,
+          sigmaGraph: DirectedGraph,
           nodesWithDiscardedEdges: Set<string>,
           minDegree: number,
           maxDegree: number
@@ -651,7 +650,7 @@ const useLightrangeGraph = () => {
 
         // Helper function to update edge sizes
         const updateEdgeSizes = (
-          sigmaGraph: UndirectedGraph,
+          sigmaGraph: DirectedGraph,
           minWeight: number,
           maxWeight: number
         ) => {
@@ -771,8 +770,7 @@ const useLightrangeGraph = () => {
           newEdge.dynamicId = sigmaGraph.addEdge(newEdge.source, newEdge.target, {
             label: newEdge.properties?.keywords || undefined,
             size: weight, // Set initial size based on weight
-            originalWeight: weight, // Store original weight for recalculation
-            type: 'curvedNoArrow' // Explicitly set edge type to no arrow
+            originalWeight: weight // Store original weight for recalculation
           });
 
           // Add the edge to the raw graph
@@ -823,7 +821,7 @@ const useLightrangeGraph = () => {
   }, [nodeToExpand, sigmaGraph, rawGraph, t]);
 
   // Helper function to get all nodes that will be deleted
-  const getNodesThatWillBeDeleted = useCallback((nodeId: string, graph: UndirectedGraph) => {
+  const getNodesThatWillBeDeleted = useCallback((nodeId: string, graph: DirectedGraph) => {
     const nodesToDelete = new Set<string>([nodeId]);
 
     // Find all nodes that would become isolated after deletion
@@ -952,7 +950,7 @@ const useLightrangeGraph = () => {
 
     // If no graph exists yet, create a new one and store it
     console.log('Creating new Sigma graph instance')
-    const graph = new UndirectedGraph()
+    const graph = new DirectedGraph()
     useGraphStore.getState().setSigmaGraph(graph)
     return graph as Graph<NodeType, EdgeType>
   }, [sigmaGraph])

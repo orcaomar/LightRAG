@@ -30,11 +30,11 @@ import '@react-sigma/core/lib/style.css'
 import '@react-sigma/graph-search/lib/style.css'
 
 // Function to create sigma settings based on theme
-const createSigmaSettings = (isDarkTheme: boolean): Partial<SigmaSettings> => ({
+const createSigmaSettings = (isDarkTheme: boolean, showEdgeArrow: boolean, showEdgeLabel: boolean): Partial<SigmaSettings> => ({
   allowInvalidContainer: true,
   defaultNodeType: 'default',
-  defaultEdgeType: 'curvedNoArrow',
-  renderEdgeLabels: false,
+  defaultEdgeType: showEdgeArrow ? 'curvedArrow' : 'curvedNoArrow',
+  renderEdgeLabels: showEdgeLabel,
   edgeProgramClasses: {
     arrow: EdgeArrowProgram,
     curvedArrow: EdgeCurvedArrowProgram,
@@ -122,14 +122,16 @@ const GraphViewer = () => {
   const enableNodeDrag = useSettingsStore.use.enableNodeDrag()
   const showLegend = useSettingsStore.use.showLegend()
   const theme = useSettingsStore.use.theme()
+  const showEdgeArrow = useSettingsStore.use.showEdgeArrow()
+  const showEdgeLabel = useSettingsStore.use.showEdgeLabel()
 
   const [isThemeSwitching, setIsThemeSwitching] = useState(false)
 
   // Memoize sigma settings to prevent unnecessary re-creation
   const memoizedSigmaSettings = useMemo(() => {
     const isDarkTheme = theme === 'dark'
-    return createSigmaSettings(isDarkTheme)
-  }, [theme])
+    return createSigmaSettings(isDarkTheme, showEdgeArrow, showEdgeLabel)
+  }, [theme, showEdgeArrow, showEdgeLabel])
 
   // Detect theme changes and briefly show a loading overlay to avoid flash of
   // unstyled content. setState is inside setTimeout (async), not synchronously

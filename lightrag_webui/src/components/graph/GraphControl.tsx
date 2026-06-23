@@ -375,10 +375,13 @@ const GraphControl = ({ disableHoverEffect }: { disableHoverEffect?: boolean }) 
               if (hideUnselectedEdges) {
                 if (!graph.extremities(edge).includes(_focusedNode)) {
                   newData.hidden = true
+                } else {
+                  // Color incoming/outgoing differently (DirectedGraph has source/target)
+                  newData.color = source === _focusedNode ? '#29B6F6' : '#EC407A'
                 }
               } else {
                 if (graph.extremities(edge).includes(_focusedNode)) {
-                  newData.color = edgeHighlightColor
+                  newData.color = source === _focusedNode ? '#29B6F6' : '#EC407A'
                 }
               }
             } catch (error) {

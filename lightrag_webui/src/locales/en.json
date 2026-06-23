@@ -247,6 +247,7 @@
         "showNodeLabel": "Show Node Label",
         "nodeDraggable": "Node Draggable",
         "showEdgeLabel": "Show Edge Label",
+        "showEdgeArrow": "Show Edge Direction",
         "hideUnselectedEdges": "Hide Unselected Edges",
         "edgeEvents": "Edge Events",
         "maxQueryDepth": "Max Query Depth",

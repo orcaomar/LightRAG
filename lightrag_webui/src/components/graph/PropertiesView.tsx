@@ -99,17 +99,19 @@ const refineNodeProperties = (node: RawNodeType): NodeType => {
 
         const edge = state.rawGraph.getEdge(edgeId, true)
         if (edge) {
-          const isTarget = node.id === edge.source
-          const neighbourId = isTarget ? edge.target : edge.source
+          const isSource = node.id === edge.source
+          const neighbourId = isSource ? edge.target : edge.source
 
           if (!state.sigmaGraph.hasNode(neighbourId)) continue;
 
           const neighbour = state.rawGraph.getNode(neighbourId)
           if (neighbour) {
+            const neighbourLabel = neighbour.properties['entity_id'] ? neighbour.properties['entity_id'] : neighbour.labels.join(', ')
+            const relationLabel = edge.properties?.keywords || 'Connected'
             relationships.push({
-              type: 'Neighbour',
+              type: relationLabel,
               id: neighbourId,
-              label: neighbour.properties['entity_id'] ? neighbour.properties['entity_id'] : neighbour.labels.join(', ')
+              label: `${isSource ? '➔' : '←'} ${neighbourLabel}`
             })
           }
         }
@@ -271,8 +273,76 @@ const FilePropertyRow = ({ value }: { value: string }) => {
   )
 }
 
+const ChunkLink = ({ id, initialMetadata }: { id: string; initialMetadata?: { original_url?: string; page_num?: number; doc_title?: string; content?: string } }) => {
+  const [info, setInfo] = useState<{ original_url?: string; page_num?: number; content?: string; doc_title?: string } | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+
+  const activeInfo = info || initialMetadata
+
+  const handleMouseEnter = () => {
+    if (loaded || loading || (activeInfo && activeInfo.content)) return
+    setLoading(true)
+    lookupChunks(id, false)
+      .then((res) => {
+        if (res && res[id]) {
+          setInfo(res[id])
+        }
+        setLoaded(true)
+      })
+      .catch((err) => {
+        console.error('Error fetching chunk content:', id, err)
+      })
+      .finally(() => {
+        setLoading(false)
+      })
+  }
+
+  const docTitle = activeInfo?.doc_title || (id.length > 30 ? `${id.substring(0, 15)}...${id.substring(id.length - 15)}` : id)
+  const pageSuffix = activeInfo?.page_num ? ` (Page ${activeInfo.page_num})` : ''
+  const displayLabel = `${docTitle}${pageSuffix}`
+
+  const innerElement = activeInfo && activeInfo.original_url ? (
+    <a
+      href={activeInfo.page_num ? `${activeInfo.original_url}#page=${activeInfo.page_num}` : activeInfo.original_url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline font-medium text-xs break-all"
+    >
+      {displayLabel}
+    </a>
+  ) : (
+    <span className="text-primary/50 text-xs break-all">
+      {displayLabel}
+    </span>
+  )
+
+  return (
+    <Tooltip key={id}>
+      <TooltipTrigger asChild>
+        <div
+          onMouseEnter={handleMouseEnter}
+          className="cursor-help inline-block max-w-full hover:bg-primary/10 rounded px-1 transition-colors"
+        >
+          {innerElement}
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="left" className="max-w-96 text-xs p-3">
+        <div className="font-semibold text-primary mb-1 break-all">{id}</div>
+        {loading ? (
+          <span className="text-primary/40 animate-pulse">Loading chunk content...</span>
+        ) : activeInfo?.content ? (
+          <p className="text-muted-foreground whitespace-pre-wrap max-h-60 overflow-y-auto leading-relaxed">{activeInfo.content}</p>
+        ) : (
+          <span className="text-muted-foreground italic">Hover to load text content...</span>
+        )}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 const SourceIdPropertyRow = ({ value }: { value: string }) => {
-  const [chunksInfo, setChunksInfo] = useState<Record<string, { original_url?: string; page_num?: number; content?: string; doc_title?: string }>>({})
+  const [chunksInfo, setChunksInfo] = useState<Record<string, { original_url?: string; page_num?: number; file_path?: string; doc_title?: string; category?: string }>>({})
   const [loading, setLoading] = useState(false)
 
   const chunkIds = useMemo(() => {
@@ -282,13 +352,13 @@ const SourceIdPropertyRow = ({ value }: { value: string }) => {
   useEffect(() => {
     if (chunkIds.length === 0) return
     setLoading(true)
-    lookupChunks(chunkIds.join(','))
+    lookupChunks(chunkIds.join(','), true)
       .then((info) => {
         if (info) {
           setChunksInfo(info)
         }
       })
-      .catch((err) => console.error('Error fetching chunks:', err))
+      .catch((err) => console.error('Error fetching chunk metadata:', err))
       .finally(() => setLoading(false))
   }, [chunkIds])
 
@@ -305,7 +375,7 @@ const SourceIdPropertyRow = ({ value }: { value: string }) => {
   }, [chunkIds, chunksInfo])
 
   if (loading) {
-    return <span className="text-primary/40 animate-pulse">Loading chunks...</span>
+    return <span className="text-primary/40 animate-pulse">Loading chunks metadata...</span>
   }
 
   if (sortedChunkIds.length === 0) {
@@ -315,45 +385,9 @@ const SourceIdPropertyRow = ({ value }: { value: string }) => {
   return (
     <TooltipProvider delayDuration={200}>
       <div className="flex flex-col gap-1 mt-1">
-        {sortedChunkIds.map((id) => {
-          const info = chunksInfo[id]
-          const docTitle = info?.doc_title || (id.length > 30 ? `${id.substring(0, 15)}...${id.substring(id.length - 15)}` : id)
-          const pageSuffix = info?.page_num ? ` (Page ${info.page_num})` : ''
-          const displayLabel = `${docTitle}${pageSuffix}`
-
-          const innerElement = info && info.original_url ? (
-            <a
-              href={info.page_num ? `${info.original_url}#page=${info.page_num}` : info.original_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline font-medium text-xs break-all"
-            >
-              {displayLabel}
-            </a>
-          ) : (
-            <span className="text-primary/50 text-xs break-all">
-              {displayLabel}
-            </span>
-          )
-
-          return (
-            <Tooltip key={id}>
-              <TooltipTrigger asChild>
-                <div className="cursor-help inline-block max-w-full hover:bg-primary/10 rounded px-1 transition-colors">
-                  {innerElement}
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="left" className="max-w-96 text-xs p-3">
-                <div className="font-semibold text-primary mb-1 break-all">{id}</div>
-                {info?.content ? (
-                  <p className="text-muted-foreground whitespace-pre-wrap max-h-60 overflow-y-auto leading-relaxed">{info.content}</p>
-                ) : (
-                  <span className="text-muted-foreground italic">No text content available or loading...</span>
-                )}
-              </TooltipContent>
-            </Tooltip>
-          )
-        })}
+        {sortedChunkIds.map((id) => (
+          <ChunkLink key={id} id={id} initialMetadata={chunksInfo[id]} />
+        ))}
       </div>
     </TooltipProvider>
   )

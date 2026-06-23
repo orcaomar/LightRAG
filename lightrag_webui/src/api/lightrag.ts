@@ -540,8 +540,8 @@ export const queryGraphs = async (
   return response.data
 }
 
-export const lookupChunks = async (ids: string): Promise<Record<string, { original_url?: string; page_num?: number; file_path?: string; doc_title?: string; category?: string; content?: string }>> => {
-  const response = await axiosInstance.get(`/documents/chunks/lookup?ids=${encodeURIComponent(ids)}`)
+export const lookupChunks = async (ids: string, excludeContent: boolean = false): Promise<Record<string, { original_url?: string; page_num?: number; file_path?: string; doc_title?: string; category?: string; content?: string }>> => {
+  const response = await axiosInstance.get(`/documents/chunks/lookup?ids=${encodeURIComponent(ids)}&exclude_content=${excludeContent}`)
   return response.data
 }
 

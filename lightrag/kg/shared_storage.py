@@ -89,6 +89,7 @@ _default_workspace: Optional[str] = None
 # shared data for storage across processes
 _shared_dicts: Optional[Dict[str, Any]] = None
 _init_flags: Optional[Dict[str, bool]] = None  # namespace -> initialized
+_loaded_flags: Optional[Dict[str, bool]] = None  # namespace -> loaded status (lazy load)
 _update_flags: Optional[Dict[str, bool]] = None  # namespace -> updated
 
 # locks for mutex access
@@ -1293,6 +1294,7 @@ def initialize_share_data(
         _data_init_lock, \
         _shared_dicts, \
         _init_flags, \
+        _loaded_flags, \
         _initialized, \
         _update_flags, \
         _async_locks, \
@@ -1339,6 +1341,7 @@ def initialize_share_data(
         _data_init_lock = _manager.Lock()
         _shared_dicts = _manager.dict()
         _init_flags = _manager.dict()
+        _loaded_flags = _manager.dict()
         _update_flags = _manager.dict()
 
         _storage_keyed_lock = KeyedUnifiedLock()
@@ -1359,6 +1362,7 @@ def initialize_share_data(
         _data_init_lock = asyncio.Lock()
         _shared_dicts = {}
         _init_flags = {}
+        _loaded_flags = {}
         _update_flags = {}
         _async_locks = None  # No need for async locks in single process mode
 
@@ -1576,6 +1580,38 @@ async def try_initialize_namespace(
     return False
 
 
+async def try_set_namespace_loaded(
+    namespace: str, workspace: str | None = None
+) -> bool:
+    """
+    Returns True if the current worker gets permission to load data.
+    If it returns False, another process is loading or has loaded it.
+    """
+    global _loaded_flags
+    if _loaded_flags is None:
+        raise ValueError("Shared data is not initialized")
+    final_namespace = get_final_namespace(namespace, workspace)
+    async with get_internal_lock():
+        if final_namespace not in _loaded_flags:
+            _loaded_flags[final_namespace] = True
+            return True
+    return False
+
+
+async def is_namespace_loaded(
+    namespace: str, workspace: str | None = None
+) -> bool:
+    """
+    Check if a namespace has been loaded.
+    """
+    global _loaded_flags
+    if _loaded_flags is None:
+        return False
+    final_namespace = get_final_namespace(namespace, workspace)
+    async with get_internal_lock():
+        return _loaded_flags.get(final_namespace, False)
+
+
 async def get_namespace_data(
     namespace: str, first_init: bool = False, workspace: str | None = None
 ) -> Dict[str, Any]:
@@ -1768,6 +1804,8 @@ def finalize_share_data():
                 _shared_dicts.clear()
             if _init_flags is not None:
                 _init_flags.clear()
+            if _loaded_flags is not None:
+                _loaded_flags.clear()
             if _update_flags is not None:
                 # Clear each namespace's update flags list and Value objects
                 try:
@@ -1799,6 +1837,7 @@ def finalize_share_data():
     _is_multiprocess = None
     _shared_dicts = None
     _init_flags = None
+    _loaded_flags = None
     _internal_lock = None
     _data_init_lock = None
     _update_flags = None
